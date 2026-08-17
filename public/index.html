@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brainrot Trade</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#09090d;color:#fff;font-family:Arial,sans-serif}
+header{padding:18px;display:flex;justify-content:space-between;align-items:center;background:#12121a;position:sticky;top:0;z-index:5}
+.logo{font-size:23px;font-weight:800;color:#ff2d68}
+button{border:0;border-radius:12px;padding:12px 17px;background:#ff2865;color:white;font-weight:700;cursor:pointer}
+button.secondary{background:#22232d}
+input,textarea{width:100%;padding:14px;margin:7px 0;background:#171820;border:1px solid #30313d;border-radius:12px;color:white;font-size:15px}
+main{max-width:850px;margin:auto;padding:18px}
+.search{margin-bottom:15px}
+.card{background:#12131b;border:1px solid #282936;border-radius:18px;padding:16px;margin:14px 0}
+.card img{width:100%;max-height:320px;object-fit:cover;border-radius:13px;margin-top:10px}
+.name{font-size:20px;font-weight:800}
+.muted{color:#9698a7}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.modal{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:15px;z-index:10}
+.box{background:#15161f;border:1px solid #343541;border-radius:20px;padding:20px;width:min(600px,100%);max-height:90vh;overflow:auto}
+.chat{height:430px;overflow:auto;background:#0c0d12;padding:12px;border-radius:14px}
+.msg{padding:10px 13px;border-radius:14px;background:#242631;margin:7px 0;max-width:80%}
+.msg.me{margin-left:auto;background:#ff2865}
+.bottom{display:flex;gap:7px;margin-top:8px}
+.admin{border:1px solid #ffb000;background:#180f00}
+.star{font-size:28px;cursor:pointer;color:#777}
+.star.on{color:#ffc400}
+nav{position:fixed;bottom:0;left:0;right:0;background:#12121a;padding:10px;display:flex;justify-content:center;gap:10px;z-index:4}
+nav button{min-width:120px}
+</style>
+</head>
+
+<body>
+
+<header>
+<div class="logo">🧠 Brainrot Trade</div>
+<button onclick="adminLogin()">🛡️ Admin</button>
+</header>
+
+<main>
+<input id="search" class="search" placeholder="🔎 Rechercher une annonce..." oninput="loadAds()">
+
+<div class="actions">
+<button onclick="openPublish()">＋ Nouvelle annonce</button>
+</div>
+
+<div id="ads">Chargement...</div>
+</main>
+
+<nav>
+<button onclick="loadAds()">🏠 Accueil</button>
+<button onclick="openPublish()">＋ Annonce</button>
+<button onclick="showChats()">💬 Messages</button>
+</nav>
+
+<!-- PUBLICATION -->
+<div id="publish" class="modal">
+<div class="box">
+<h2>➕ Nouvelle annonce</h2>
+<input id="adName" placeholder="Ton pseudo">
+<input id="adDescription" placeholder="Décris ton Brainrot / ton échange">
+<input id="adLooking" placeholder="Ce que tu recherches">
+<input id="photo" type="file" accept="image/*">
+<div class="actions">
+<button onclick="publish()">Publier</button>
+<button class="secondary" onclick="closeModal('publish')">Annuler</button>
+</div>
+</div>
+</div>
+
+<!-- CHAT -->
+<div id="chatModal" class="modal">
+<div class="box">
+<h2>💬 Discussion</h2>
+<div id="chatMessages" class="chat"></div>
+<div class="bottom">
+<input id="message" placeholder="Écris un message...">
+<button onclick="sendMessage()">Envoyer</button>
+</div>
+<div class="actions">
+<button class="secondary" onclick="closeChat()">🔒 Clôturer</button>
+<button class="secondary" onclick="reportChat()">🚨 Signaler</button>
+</div>
+</div>
+</div>
+
+<!-- NOTATION -->
+<div id="rating" class="modal">
+<div class="box">
+<h2>⭐ Note ton échange</h2>
+<div id="stars">
+<span class="star" onclick="rate(1)">★</span>
+<span class="star" onclick="rate(2)">★</span>
+<span class="star" onclick="rate(3)">★</span>
+<span class="star" onclick="rate(4)">★</span>
+<span class="star" onclick="rate(5)">★</span>
+</div>
+<textarea id="comment" placeholder="Un commentaire (facultatif)"></textarea>
+<button onclick="submitRating()">Envoyer la note</button>
+</div>
+</div>
+
+<!-- ADMIN -->
+<div id="admin" class="modal">
+<div class="box admin">
+<h2>🛡️ Administration</h2>
+<div id="adminContent">Chargement...</div>
+<button class="secondary" onclick="closeModal('admin')">Fermer</button>
+</div>
+</div>
+
+<script>
+let currentChat=null,currentRating=0,currentAd=null;
+
+const $=id=>document.getElementById(id);
+
+function openPublish(){$('publish').style.display='flex'}
+function closeModal(id){$(id).style.display='none'}
+
+async function loadAds(){
+ try{
+  const r=await fetch('/api/ads');
+  const ads=await r.json();
+  const q=$('search').value.toLowerCase();
+  const list=ads.filter(a=>
+   String(a.name||'').toLowerCase().includes(q)||
+   String(a.description||'').toLowerCase().includes(q)||
+   String(a.looking||'').toLowerCase().includes(q)
+  );
+
+  $('ads').innerHTML=list.length?list.map(a=>`
+   <div class="card">
+    <div class="name">${esc(a.name)}</div>
+    <p>${esc(a.description||'')}</p>
+    <p class="muted">🔎 Recherche : ${esc(a.looking||'')}</p>
+    ${a.photo?`<img src="${a.photo}">`:''}
+    ${a.certified?'<p>☑️ Annonce certifiée</p>':''}
+    <div class="actions">
+     <button onclick="startChat(${a.id})">💬 Chat</button>
+     <button class="secondary" onclick="reportAd(${a.id})">🚨 Signaler</button>
+    </div>
+   </div>
+  `).join(''):'<p class="muted">Aucune annonce pour le moment.</p>';
+ }catch(e){
+  $('ads').innerHTML='<p>Impossible de charger les annonces.</p>';
+ }
+}
+
+async function publish(){
+ const file=$('photo').files[0];
+ const fd=new FormData();
+ fd.append('name',$('adName').value);
+ fd.append('description',$('adDescription').value);
+ fd.append('looking',$('adLooking').value);
+ if(file)fd.append('photo',file);
+
+ try{
+  const r=await fetch('/api/ads',{method:'POST',body:fd});
+  if(!r.ok)throw new Error();
+  closeModal('publish');
+  $('adName').value='';
+  $('adDescription').value='';
+  $('adLooking').value='';
+  $('photo').value='';
+  loadAds();
+ }catch(e){alert('Erreur lors de la publication.')}
+}
+
+async function startChat(id){
+ currentAd=id;
+ try{
+  const r=await fetch('/api/chats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ad_id:id})});
+  const d=await r.json();
+  currentChat=d.id||d.chat_id;
+  $('chatModal').style.display='flex';
+  loadChat();
+ }catch(e){alert('Impossible d’ouvrir le chat.')}
+}
+
+async function loadChat(){
+ if(!currentChat)return;
+ try{
+  const r=await fetch('/api/chats/'+currentChat);
+  const d=await r.json();
+  const msgs=d.messages||[];
+  $('chatMessages').innerHTML=msgs.map(m=>`
+   <div class="msg ${m.mine?'me':''}">${esc(m.text)}</div>
+  `).join('');
+  $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+ }catch(e){}
+}
+
+async function sendMessage(){
+ const text=$('message').value.trim();
+ if(!text||!currentChat)return;
+ try{
+  await fetch('/api/chats/'+currentChat+'/messages',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({text})
+  });
+  $('message').value='';
+  loadChat();
+ }catch(e){alert('Message impossible à envoyer.')}
+}
+
+async function closeChat(){
+ if(!currentChat)return;
+ try{
+  await fetch('/api/chats/'+currentChat+'/close',{method:'POST'});
+  closeModal('chatModal');
+  $('rating').style.display='flex';
+ }catch(e){alert('Impossible de clôturer le chat.')}
+}
+
+async function rate(n){
+ currentRating=n;
+ document.querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('on',i<n));
+}
+
+async function submitRating(){
+ if(!currentChat||!currentRating)return alert('Choisis une note.');
+ await fetch('/api/chats/'+currentChat+'/rate',{
+  method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({rating:currentRating,comment:$('comment').value})
+ });
+ closeModal('rating');
+ alert('Merci pour ta note ⭐');
+}
+
+async function reportAd(id){
+ const reason=prompt('Pourquoi signales-tu cette annonce ?');
+ if(!reason)return;
+ await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ad_id:id,reason})});
+ alert('Signalement envoyé 🚨');
+}
+
+async function reportChat(){
+ const reason=prompt('Pourquoi signales-tu cette conversation ?');
+ if(!reason)return;
+ await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:currentChat,reason})});
+ alert('Signalement envoyé 🚨');
+}
+
+async function adminLogin(){
+ const code=prompt('Code administrateur :');
+ if(!code)return;
+ try{
+  const r=await fetch('/api/admin/login',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({code})
+  });
+  if(!r.ok)return alert('Code incorrect.');
+  $('admin').style.display='flex';
+  loadAdmin();
+ }catch(e){alert('Serveur indisponible.')}
+}
+
+async function loadAdmin(){
+ try{
+  const r=await fetch('/api/admin/ads');
+  const ads=await r.json();
+  $('adminContent').innerHTML=ads.map(a=>`
+   <div class="card">
+    <b>${esc(a.name)}</b>
+    <p>${esc(a.description||'')}</p>
+    <div class="actions">
+     <button onclick="certify(${a.id})">☑️ Certifier</button>
+     <button onclick="deleteAd(${a.id})">🗑️ Supprimer</button>
+    </div>
+   </div>
+  `).join('');
+ }catch(e){$('adminContent').innerHTML='Erreur admin.'}
+}
+
+async function certify(id){
+ await fetch('/api/admin/ads/'+id+'/certify',{method:'POST'});
+ loadAdmin();loadAds();
+}
+
+async function deleteAd(id){
+ if(!confirm('Supprimer cette annonce ?'))return;
+ await fetch('/api/admin/ads/'+id,{method:'DELETE'});
+ loadAdmin();loadAds();
+}
+
+async function showChats(){
+ alert('Les conversations sont accessibles en ouvrant le chat de chaque annonce.');
+}
+
+function closeChatModal(){closeModal('chatModal')}
+function esc(x){
+ return String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+
+loadAds();
+setInterval(()=>{if(currentChat)loadChat()},3000);
+</script>
+</body>
+</html>
